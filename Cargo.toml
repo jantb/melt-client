@@ -1,0 +1,11 @@
+[package]
+name = "telescope-client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tracing = "0.1.40"
+tonic = "0.11.0"
+tracing-core = "0.1.32"
+prost = "0.12.6"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
