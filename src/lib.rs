@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, sync_channel, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
-use tokio::runtime::{Handle};
 
 use tonic::Request;
 use tonic::transport::Channel;
@@ -46,10 +45,9 @@ impl GrpcSubscriber {
 
 fn start_logging_thread(rx: Receiver<LogRecord>, mut client: LogsServiceClient<Channel>) {
     thread::spawn(move || {
-        let runtime_handle = Handle::current();
         let mut buffer = Vec::with_capacity(1000);
         let mut last_send = Instant::now();
-
+        let rt = tokio::runtime::Runtime::new().unwrap();
         loop {
             while let Ok(record) = rx.try_recv() {
                 buffer.push(record);
@@ -81,7 +79,7 @@ fn start_logging_thread(rx: Receiver<LogRecord>, mut client: LogsServiceClient<C
                     resource_logs: vec![logs],
                 });
 
-                runtime_handle.block_on( client.export(request)).unwrap();
+                rt.block_on(async { client.export(request).await.unwrap(); });
 
                 last_send = Instant::now();
             } else {
