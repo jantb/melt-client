@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, sync_channel, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
+use chrono::Local;
 
 use tonic::Request;
 use tonic::transport::Channel;
@@ -49,7 +50,6 @@ fn start_logging_thread(rx: Receiver<LogRecord>, mut client: LogsServiceClient<C
         let rt = tokio::runtime::Runtime::new().unwrap();
         loop {
             while let Ok(record) = rx.try_recv() {
-                println!("{:?}", record);
                 buffer.push(record);
                 if buffer.len() == 1000 {
                     break;
@@ -138,6 +138,7 @@ impl Subscriber for GrpcSubscriber {
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap()
                 .as_nanos() as u64;
+            let body = visitor.values["message"].to_string();
             let record = LogRecord {
                 time_unix_nano: unix_nano,
                 observed_time_unix_nano: unix_nano,
@@ -150,7 +151,7 @@ impl Subscriber for GrpcSubscriber {
                 },
                 severity_text: event.metadata().level().to_string().clone(),
                 body: Some(AnyValue {
-                    value: Some(StringValue(visitor.values["message"].to_string())),
+                    value: Some(StringValue(body.clone())),
                 }),
                 attributes: vec![],
                 dropped_attributes_count: 0,
@@ -158,7 +159,7 @@ impl Subscriber for GrpcSubscriber {
                 trace_id: vec![],
                 span_id: vec![],
             };
-            println!("{:?} {} {:?}", SystemTime::now(), record.severity_text, record.body.clone().unwrap().value.unwrap());
+            println!("{} {} {:?}", Local::now(), record.severity_text, body);
             self.tx.send(record).unwrap();
         }
     }
