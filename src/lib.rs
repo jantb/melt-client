@@ -82,10 +82,7 @@ fn start_logging_thread(rx: Receiver<LogRecord>, mut client: LogsServiceClient<C
 
                     match rt.block_on(async { client.export(request).await }) {
                         Ok(_) => break, // If request succeeded, the loop is broken
-                        Err(err) => {
-                            // You can log the error here
-                            eprintln!("Failed to send the data to client: {:?}", err);
-                            // Sleep for a second before the next attempt
+                        Err(_) => {
                             thread::sleep(Duration::from_secs(1));
                         }
                     }
