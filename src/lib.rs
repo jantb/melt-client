@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::mpsc::{Receiver, sync_channel, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 use tokio::runtime::{Handle};
@@ -29,24 +30,21 @@ pub async fn start_tracer(url: String) {
 }
 
 struct GrpcSubscriber {
-    tx: tokio::sync::mpsc::Sender<LogRecord>,
-    handle: Handle,
+    tx: SyncSender<LogRecord>,
 }
 
 impl GrpcSubscriber {
     fn new(client: LogsServiceClient<Channel>) -> Self {
-        let (tx, rx) = tokio::sync::mpsc::channel::<LogRecord>(1000);
+        let (tx, rx) = sync_channel(1000);
 
         start_logging_thread(rx, client);
-        let handle = Handle::current();
         Self {
-            tx,
-            handle
+            tx
         }
     }
 }
 
-fn start_logging_thread(mut rx: tokio::sync::mpsc::Receiver<LogRecord>, mut client: LogsServiceClient<Channel>) {
+fn start_logging_thread(rx: Receiver<LogRecord>, mut client: LogsServiceClient<Channel>) {
     thread::spawn(move || {
         let runtime_handle = Handle::current();
         let mut buffer = Vec::with_capacity(1000);
@@ -160,7 +158,7 @@ impl Subscriber for GrpcSubscriber {
                 trace_id: vec![],
                 span_id: vec![],
             };
-            self.handle.block_on(self.tx.send(record)).unwrap();
+            self.tx.send(record).unwrap();
         }
     }
 
