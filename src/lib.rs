@@ -57,40 +57,39 @@ fn start_logging_thread(rx: Receiver<LogRecord>, mut client: LogsServiceClient<C
             }
 
             if buffer.len() >= 1000 || last_send.elapsed().as_secs() >= 1 {
-                let logs = ResourceLogs {
-                    resource: Some(Resource {
-                        attributes: vec![KeyValue {
-                            key: "service.name".to_string(),
-                            value: Some(AnyValue {
-                                value: Some(StringValue(service_name.clone())),
-                            }),
-                        }],
-                        dropped_attributes_count: 0,
-                    }),
-                    scope_logs: vec![ScopeLogs {
-                        scope: None,
-                        log_records: buffer.drain(..).collect(),
-                        schema_url: "".to_string(),
-                    }],
-                    schema_url: "".to_string(),
-                };
-
-                let request = Request::new(ExportLogsServiceRequest {
-                    resource_logs: vec![logs],
-                });
-
                 loop {
-                    match rt.block_on(async { client.export(request.clone()).await }) {
-                        Ok(_) => break,  // If request succeeded, exit the loop and let the thread continue
+                    let logs = ResourceLogs {
+                        resource: Some(Resource {
+                            attributes: vec![KeyValue {
+                                key: "service.name".to_string(),
+                                value: Some(AnyValue {
+                                    value: Some(StringValue(service_name.clone())),
+                                }),
+                            }],
+                            dropped_attributes_count: 0,
+                        }),
+                        scope_logs: vec![ScopeLogs {
+                            scope: None,
+                            log_records: buffer.drain(..).collect(),
+                            schema_url: "".to_string(),
+                        }],
+                        schema_url: "".to_string(),
+                    };
+
+                    let request = Request::new(ExportLogsServiceRequest {
+                        resource_logs: vec![logs],
+                    });
+
+                    match rt.block_on(async { client.export(request).await }) {
+                        Ok(_) => break, // If request succeeded, the loop is broken
                         Err(err) => {
-                            println!("Failed to send logs: {}, trying to reconnect in 1 second.", err);
-                            // Here we sleep for one second before trying again
+                            // You can log the error here
+                            eprintln!("Failed to send the data to client: {:?}", err);
+                            // Sleep for a second before the next attempt
                             thread::sleep(Duration::from_secs(1));
-                            continue;  // If request failed, try again
                         }
                     }
                 }
-
                 last_send = Instant::now();
             } else {
                 // Allow thread to sleep for a while before next check
