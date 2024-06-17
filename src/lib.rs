@@ -123,6 +123,7 @@ impl Subscriber for GrpcSubscriber {
     }
 
     fn event(&self, event: &Event<'_>) {
+        println!("{:?}", event);
         if event.metadata().level() == &Level::INFO
             || event.metadata().level() == &Level::WARN
             || event.metadata().level() == &Level::ERROR
@@ -149,7 +150,7 @@ impl Subscriber for GrpcSubscriber {
                 },
                 severity_text: event.metadata().level().to_string().clone(),
                 body: Some(AnyValue {
-                    value: Some(Value::StringValue(visitor.values["message"].to_string())),
+                    value: Some(StringValue(visitor.values["message"].to_string())),
                 }),
                 attributes: vec![],
                 dropped_attributes_count: 0,
