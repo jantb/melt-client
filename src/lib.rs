@@ -79,7 +79,17 @@ fn start_logging_thread(rx: Receiver<LogRecord>, mut client: LogsServiceClient<C
                     resource_logs: vec![logs],
                 });
 
-                rt.block_on(async { client.export(request).await.unwrap(); });
+                loop {
+                    match rt.block_on(async { client.export(request.clone()).await }) {
+                        Ok(_) => break,  // If request succeeded, exit the loop and let the thread continue
+                        Err(err) => {
+                            println!("Failed to send logs: {}, trying to reconnect in 1 second.", err);
+                            // Here we sleep for one second before trying again
+                            thread::sleep(Duration::from_secs(1));
+                            continue;  // If request failed, try again
+                        }
+                    }
+                }
 
                 last_send = Instant::now();
             } else {
