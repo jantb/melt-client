@@ -11,7 +11,6 @@ use tracing::level_filters::LevelFilter;
 use tracing::subscriber::{Interest, set_global_default};
 
 use crate::opentelclient::{AnyValue, ExportLogsServiceRequest, KeyValue, LogRecord, Resource, ResourceLogs, ScopeLogs};
-use crate::opentelclient::any_value::Value;
 use crate::opentelclient::any_value::Value::StringValue;
 use crate::opentelclient::logs_service_client::LogsServiceClient;
 
@@ -123,11 +122,12 @@ impl Subscriber for GrpcSubscriber {
     }
 
     fn event(&self, event: &Event<'_>) {
-        println!("{:?}", event);
+
         if event.metadata().level() == &Level::INFO
             || event.metadata().level() == &Level::WARN
             || event.metadata().level() == &Level::ERROR
         {
+
             // This method records that an event has occurred.
             let mut visitor = FieldVisitor {
                 values: HashMap::new(),
@@ -158,6 +158,7 @@ impl Subscriber for GrpcSubscriber {
                 trace_id: vec![],
                 span_id: vec![],
             };
+            println!("{:?} {} {:?}", SystemTime::now(), record.severity_text, record.body.clone().unwrap().value.unwrap());
             self.tx.send(record).unwrap();
         }
     }
