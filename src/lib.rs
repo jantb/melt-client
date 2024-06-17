@@ -18,8 +18,9 @@ use crate::opentelclient::logs_service_client::LogsServiceClient;
 mod opentelclient;
 
 pub async fn start_tracer(url: String) {
+    let url_leak = Box::leak(url.into_boxed_str());
     set_global_default(GrpcSubscriber::new(LogsServiceClient::new(
-        Channel::from_static(&url)
+        Channel::from_static(url_leak)
             .connect()
             .await
             .unwrap(),
