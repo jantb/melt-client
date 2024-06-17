@@ -17,14 +17,14 @@ use crate::opentelclient::logs_service_client::LogsServiceClient;
 
 mod opentelclient;
 
-pub async fn start_tracer(url: String) {
+pub async fn start_tracer(url: String,service_name : String) {
     let url_leak = Box::leak(url.into_boxed_str());
     set_global_default(GrpcSubscriber::new(LogsServiceClient::new(
         Channel::from_static(url_leak)
             .connect()
             .await
             .unwrap(),
-    )))
+    ), service_name))
         .expect("sets the global default subscriber");
 }
 
@@ -33,23 +33,24 @@ struct GrpcSubscriber {
 }
 
 impl GrpcSubscriber {
-    fn new(client: LogsServiceClient<Channel>) -> Self {
+    fn new(client: LogsServiceClient<Channel>, service_name : String) -> Self {
         let (tx, rx) = sync_channel(1000);
 
-        start_logging_thread(rx, client);
+        start_logging_thread(rx, client, service_name.clone());
         Self {
             tx
         }
     }
 }
 
-fn start_logging_thread(rx: Receiver<LogRecord>, mut client: LogsServiceClient<Channel>) {
+fn start_logging_thread(rx: Receiver<LogRecord>, mut client: LogsServiceClient<Channel>, service_name: String) {
     thread::spawn(move || {
         let mut buffer = Vec::with_capacity(1000);
         let mut last_send = Instant::now();
         let rt = tokio::runtime::Runtime::new().unwrap();
         loop {
             while let Ok(record) = rx.try_recv() {
+                println!("{:?}", record);
                 buffer.push(record);
                 if buffer.len() == 1000 {
                     break;
@@ -62,7 +63,7 @@ fn start_logging_thread(rx: Receiver<LogRecord>, mut client: LogsServiceClient<C
                         attributes: vec![KeyValue {
                             key: "service.name".to_string(),
                             value: Some(AnyValue {
-                                value: Some(StringValue("Logs".to_string())),
+                                value: Some(StringValue(service_name.clone())),
                             }),
                         }],
                         dropped_attributes_count: 0,
