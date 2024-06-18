@@ -16,7 +16,7 @@ use crate::opentelclient::any_value::Value::StringValue;
 use crate::opentelclient::logs_service_client::LogsServiceClient;
 
 mod opentelclient;
-struct TelescopeSubscriber {
+pub struct TelescopeSubscriber {
     tx: SyncSender<LogRecord>,
 }
 
