@@ -21,7 +21,7 @@ pub struct TelescopeSubscriber {
 }
 
 impl TelescopeSubscriber {
-   async  fn new( service_name : String, url : String) -> Self {
+   pub async fn new( service_name : String, url : String) -> Self {
        let url_leak = Box::leak(url.into_boxed_str());
         let (tx, rx) = sync_channel(1000);
 
