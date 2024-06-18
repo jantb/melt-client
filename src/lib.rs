@@ -2,38 +2,32 @@ use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, sync_channel, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
-use chrono::Local;
 
+use chrono::Local;
 use tonic::Request;
 use tonic::transport::Channel;
 use tracing::{Dispatch, Event, Id, Level, Metadata, span, Subscriber};
 use tracing::field::Field;
 use tracing::level_filters::LevelFilter;
-use tracing::subscriber::{Interest, set_global_default};
+use tracing::subscriber::Interest;
 
 use crate::opentelclient::{AnyValue, ExportLogsServiceRequest, KeyValue, LogRecord, Resource, ResourceLogs, ScopeLogs};
 use crate::opentelclient::any_value::Value::StringValue;
 use crate::opentelclient::logs_service_client::LogsServiceClient;
 
 mod opentelclient;
-
-pub async fn start_tracer(url: String,service_name : String) {
-    let url_leak = Box::leak(url.into_boxed_str());
-    set_global_default(GrpcSubscriber::new(LogsServiceClient::new(
-        Channel::from_static(url_leak)
-            .connect()
-            .await
-            .unwrap(),
-    ), service_name))
-        .expect("sets the global default subscriber");
-}
-
-struct GrpcSubscriber {
+struct TelescopeSubscriber {
     tx: SyncSender<LogRecord>,
 }
 
-impl GrpcSubscriber {
-    fn new(client: LogsServiceClient<Channel>, service_name : String) -> Self {
+impl TelescopeSubscriber {
+   async  fn new(client: LogsServiceClient<Channel>, service_name : String, url : String) -> Self {
+       let url_leak = Box::leak(url.into_boxed_str());
+        LogsServiceClient::new(
+            Channel::from_static(url_leak)
+                .connect()
+                .await
+                .unwrap());
         let (tx, rx) = sync_channel(1000);
 
         start_logging_thread(rx, client, service_name.clone());
@@ -56,7 +50,7 @@ fn start_logging_thread(rx: Receiver<LogRecord>, mut client: LogsServiceClient<C
                 }
             }
 
-            if buffer.len() >= 1000 || last_send.elapsed().as_secs() >= 1 {
+                if buffer.len() >= 100 || last_send.elapsed().as_millis() >= 1000 {
                 loop {
                     let logs = ResourceLogs {
                         resource: Some(Resource {
@@ -90,13 +84,13 @@ fn start_logging_thread(rx: Receiver<LogRecord>, mut client: LogsServiceClient<C
                 last_send = Instant::now();
             } else {
                 // Allow thread to sleep for a while before next check
-                thread::sleep(Duration::from_millis(100));
+                thread::sleep(Duration::from_millis(50));
             }
         }
     });
 }
 
-impl Subscriber for GrpcSubscriber {
+impl Subscriber for TelescopeSubscriber {
     fn on_register_dispatch(&self, _: &Dispatch) {}
 
     fn register_callsite(&self, _: &'static Metadata<'static>) -> Interest {
