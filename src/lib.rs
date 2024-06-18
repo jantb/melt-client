@@ -21,16 +21,15 @@ pub struct TelescopeSubscriber {
 }
 
 impl TelescopeSubscriber {
-   async  fn new(client: LogsServiceClient<Channel>, service_name : String, url : String) -> Self {
+   async  fn new( service_name : String, url : String) -> Self {
        let url_leak = Box::leak(url.into_boxed_str());
-        LogsServiceClient::new(
+        let (tx, rx) = sync_channel(1000);
+
+        start_logging_thread(rx, LogsServiceClient::new(
             Channel::from_static(url_leak)
                 .connect()
                 .await
-                .unwrap());
-        let (tx, rx) = sync_channel(1000);
-
-        start_logging_thread(rx, client, service_name.clone());
+                .unwrap()), service_name.clone());
         Self {
             tx
         }
