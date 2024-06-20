@@ -3,26 +3,24 @@ use std::sync::mpsc::{Receiver, sync_channel, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
-use chrono::Local;
 use tonic::Request;
 use tonic::transport::Channel;
-use tracing::{Dispatch, Event, Id, Level, Metadata, span, Subscriber};
+use tracing::{Event, Level, Subscriber};
 use tracing::field::Field;
-use tracing::level_filters::LevelFilter;
-use tracing::subscriber::Interest;
 
 use crate::opentelclient::{AnyValue, ExportLogsServiceRequest, KeyValue, LogRecord, Resource, ResourceLogs, ScopeLogs};
-use crate::opentelclient::any_value::Value::StringValue;
+use crate::opentelclient::any_value::Value::{IntValue, StringValue};
 use crate::opentelclient::logs_service_client::LogsServiceClient;
 
 mod opentelclient;
-pub struct TelescopeSubscriber {
+
+pub struct TelescopeLayer {
     tx: SyncSender<LogRecord>,
 }
 
-impl TelescopeSubscriber {
-   pub async fn new( service_name : String, url : String) -> Self {
-       let url_leak = Box::leak(url.into_boxed_str());
+impl TelescopeLayer {
+    pub async fn new(service_name: String, url: String) -> Self {
+        let url_leak = Box::leak(url.into_boxed_str());
         let (tx, rx) = sync_channel(1000);
 
         start_logging_thread(rx, LogsServiceClient::new(
@@ -32,6 +30,54 @@ impl TelescopeSubscriber {
                 .unwrap()), service_name.clone());
         Self {
             tx
+        }
+    }
+}
+
+impl<S: Subscriber> tracing_subscriber::Layer<S> for TelescopeLayer {
+    fn on_event(&self, event: &Event<'_>, _ctx: tracing_subscriber::layer::Context<'_, S>) {
+        if event.metadata().level() == &Level::INFO
+            || event.metadata().level() == &Level::WARN
+            || event.metadata().level() == &Level::ERROR {
+            let mut visitor = FieldVisitor {
+                values: HashMap::new(),
+            };
+            event.record(&mut visitor);
+
+            let unix_nano = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos() as u64;
+
+            let body = visitor.values["message"].to_string();
+
+            let record = LogRecord {
+                time_unix_nano: unix_nano,
+                observed_time_unix_nano: unix_nano,
+                severity_number: match event.metadata().level() {
+                    &Level::TRACE => 1,
+                    &Level::DEBUG => 5,
+                    &Level::INFO => 9,
+                    &Level::WARN => 13,
+                    &Level::ERROR => 17,
+                },
+                severity_text: event.metadata().level().to_string().clone(),
+                body: Some(AnyValue {
+                    value: Some(StringValue(body.clone())),
+                }),
+                attributes: vec![KeyValue {
+                    key: "file".to_string(),
+                    value:  event.metadata().file().map(|file| AnyValue{ value: Some(StringValue(file.to_string()))})
+                }, KeyValue {
+                    key: "line".to_string(),
+                    value:  event.metadata().line().map(|line| AnyValue{value:Some(IntValue(line as i64))})
+                }],
+                dropped_attributes_count: 0,
+                flags: 0,
+                trace_id: vec![],
+                span_id: vec![],
+            };
+            self.tx.send(record).unwrap();
         }
     }
 }
@@ -49,7 +95,7 @@ fn start_logging_thread(rx: Receiver<LogRecord>, mut client: LogsServiceClient<C
                 }
             }
 
-                if buffer.len() >= 100 || last_send.elapsed().as_millis() >= 1000 {
+            if buffer.len() >= 100 || last_send.elapsed().as_millis() >= 1000 {
                 loop {
                     let logs = ResourceLogs {
                         resource: Some(Resource {
@@ -83,93 +129,10 @@ fn start_logging_thread(rx: Receiver<LogRecord>, mut client: LogsServiceClient<C
                 last_send = Instant::now();
             } else {
                 // Allow thread to sleep for a while before next check
-                thread::sleep(Duration::from_millis(50));
+                thread::sleep(Duration::from_millis(100));
             }
         }
     });
-}
-
-impl Subscriber for TelescopeSubscriber {
-    fn on_register_dispatch(&self, _: &Dispatch) {}
-
-    fn register_callsite(&self, _: &'static Metadata<'static>) -> Interest {
-        Interest::always()
-    }
-
-    fn enabled(&self, _: &Metadata<'_>) -> bool {
-        true
-    }
-
-    fn max_level_hint(&self) -> Option<LevelFilter> {
-        Some(LevelFilter::TRACE)
-    }
-
-    fn new_span(&self, _span: &span::Attributes<'_>) -> span::Id {
-        Id::from_u64(1)
-    }
-
-    fn record(&self, _span: &Id, _values: &span::Record<'_>) {
-        // This method records updated values for a span.
-    }
-
-    fn record_follows_from(&self, _span: &Id, _follows: &Id) {
-        // This method records that a span follows from another span.
-    }
-
-    fn event_enabled(&self, _: &Event<'_>) -> bool {
-        true
-    }
-
-    fn event(&self, event: &Event<'_>) {
-
-        if event.metadata().level() == &Level::INFO
-            || event.metadata().level() == &Level::WARN
-            || event.metadata().level() == &Level::ERROR
-        {
-
-            // This method records that an event has occurred.
-            let mut visitor = FieldVisitor {
-                values: HashMap::new(),
-            };
-            event.record(&mut visitor);
-
-            let unix_nano = SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos() as u64;
-            let body = visitor.values["message"].to_string();
-            let record = LogRecord {
-                time_unix_nano: unix_nano,
-                observed_time_unix_nano: unix_nano,
-                severity_number: match event.metadata().level() {
-                    &Level::TRACE => 1,
-                    &Level::DEBUG => 5,
-                    &Level::INFO => 9,
-                    &Level::WARN => 13,
-                    &Level::ERROR => 17,
-                },
-                severity_text: event.metadata().level().to_string().clone(),
-                body: Some(AnyValue {
-                    value: Some(StringValue(body.clone())),
-                }),
-                attributes: vec![],
-                dropped_attributes_count: 0,
-                flags: 0,
-                trace_id: vec![],
-                span_id: vec![],
-            };
-            println!("{} {} {:?}", Local::now(), record.severity_text, body);
-            self.tx.send(record).unwrap();
-        }
-    }
-
-    fn enter(&self, _span: &Id) {
-        // This method records that a span has been entered.
-    }
-
-    fn exit(&self, _span: &Id) {
-        // This method records that a span has been exited.
-    }
 }
 
 struct FieldVisitor {
