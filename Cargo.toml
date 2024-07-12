@@ -5,9 +5,9 @@ edition = "2021"
 
 [dependencies]
 tracing = "0.1.40"
-tonic = "0.11.0"
+tonic = "0.12.0"
 tracing-core = "0.1.32"
-prost = "0.12.6"
+prost = "0.13.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 chrono = "0.4.38"
 tracing-subscriber = "0.3.18"
