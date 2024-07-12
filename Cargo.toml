@@ -1,5 +1,5 @@
 [package]
-name = "telescope-client"
+name = "melt-client"
 version = "0.1.19"
 edition = "2021"
 
