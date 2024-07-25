@@ -2,17 +2,17 @@ use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, sync_channel, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
+use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
+use opentelemetry_proto::tonic::collector::logs::v1::logs_service_client::LogsServiceClient;
+use opentelemetry_proto::tonic::common::v1::any_value::Value::{IntValue, StringValue};
+use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue};
+use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+use opentelemetry_proto::tonic::resource::v1::Resource;
 
 use tonic::Request;
 use tonic::transport::Channel;
 use tracing::{Event, Level, Subscriber};
 use tracing::field::Field;
-
-use crate::opentelclient::{AnyValue, ExportLogsServiceRequest, KeyValue, LogRecord, Resource, ResourceLogs, ScopeLogs};
-use crate::opentelclient::any_value::Value::{IntValue, StringValue};
-use crate::opentelclient::logs_service_client::LogsServiceClient;
-
-mod opentelclient;
 
 pub struct TelescopeLayer {
     tx: SyncSender<LogRecord>,
