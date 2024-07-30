@@ -10,7 +10,7 @@ use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
 use opentelemetry_proto::tonic::resource::v1::Resource;
 
 use tonic::Request;
-use tonic::transport::{Channel, Error};
+use tonic::transport::{Channel};
 use tracing::{Event, Level, Subscriber};
 use tracing::field::Field;
 
