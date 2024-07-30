@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::mpsc::{Receiver, sync_channel, SyncSender};
+use std::sync::mpsc::{channel, Receiver, sync_channel, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
@@ -10,31 +10,49 @@ use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
 use opentelemetry_proto::tonic::resource::v1::Resource;
 
 use tonic::Request;
-use tonic::transport::Channel;
+use tonic::transport::{Channel, Error};
 use tracing::{Event, Level, Subscriber};
 use tracing::field::Field;
 
-pub struct TelescopeLayer {
+pub struct MeltLayer {
     tx: SyncSender<LogRecord>,
 }
 
-impl TelescopeLayer {
+impl MeltLayer {
     pub async fn new(service_name: String, url: String) -> Self {
         let url_leak = Box::leak(url.into_boxed_str());
         let (tx, rx) = sync_channel(1000);
 
-        start_logging_thread(rx, LogsServiceClient::new(
-            Channel::from_static(url_leak)
-                .connect()
-                .await
-                .unwrap()), service_name.clone());
-        Self {
-            tx
+        let result = Channel::from_static(url_leak)
+            .connect()
+            .await;
+        match result {
+            Ok(channel) => {
+                start_logging_thread(rx, LogsServiceClient::new(
+                    channel
+                ), service_name.clone());
+                Self {
+                    tx
+                }
+            }
+            Err(_) => {
+                let (_, discard_rx) = channel();
+                start_discarding_thread(discard_rx);
+                Self {
+                    tx
+                }
+            }
         }
     }
 }
-
-impl<S: Subscriber> tracing_subscriber::Layer<S> for TelescopeLayer {
+fn start_discarding_thread(rx: Receiver<LogRecord>) {
+    thread::spawn(move || {
+        while let Ok(_) = rx.recv() {
+            // Just consume the log records, do nothing with them
+        }
+    });
+}
+impl<S: Subscriber> tracing_subscriber::Layer<S> for MeltLayer {
     fn on_event(&self, event: &Event<'_>, _ctx: tracing_subscriber::layer::Context<'_, S>) {
         if event.metadata().level() == &Level::INFO
             || event.metadata().level() == &Level::WARN
