@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::mpsc::{channel, Receiver, sync_channel, SyncSender};
+use std::sync::mpsc::{channel, Receiver, SendError, sync_channel, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
@@ -95,7 +95,10 @@ impl<S: Subscriber> tracing_subscriber::Layer<S> for MeltLayer {
                 trace_id: vec![],
                 span_id: vec![],
             };
-            self.tx.send(record).unwrap();
+            match self.tx.send(record) {
+                Ok(_) => {}
+                Err(_) => {}
+            };
         }
     }
 }
